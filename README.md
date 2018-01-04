@@ -3,8 +3,33 @@
 ## Description
 
 This tool is used to split parts of a repository into a new repository.
-The tool must be executed inside the source repository. The specified
-destination path cannot be a subdirectory of the source repository.
+The tool must be executed inside the source repository, but does not
+modify the source repository (make sure to read the disclaimer). The
+tool tries to determine file renames and keep history across renames
+accordingly.
+
+This tool seems to work quite well for my own purpose, but it's not
+garanteed to work for others as well.
+
+## Usage
+
+```
+usage: gitsplit branch dst keep [keep ...]
+
+DESCRIPTION
+    This tool is used to split parts of a repository into a new
+    repository. The tool must be executed inside the source re-
+    pository. The specified destination path cannot be a sub-
+    directory of the source repository.
+
+ARGUMENTS
+    branch    The source branch to split from.
+
+    dst       The destination path for the repository to create
+              This path must not exist.
+
+    keep      At least one path to keep in the new repository.
+```
 
 ## Disclaimer
 
