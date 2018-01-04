@@ -131,6 +131,8 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     cd $src
 
     git clone $tmp $dst || { echo "unable to clone tmp repository into destination path"; exit 1; }
+    cd $dst
+
     git remote | xargs git remote rm
 
     rm -rf $tmp
