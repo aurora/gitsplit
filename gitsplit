@@ -108,6 +108,8 @@ keep="${keep[@]}"
 
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     # do the dirty work
+
+    # create name for a temporary directory and clone source repository to it
     tmp=$(mktemp -u 2>/dev/null || mktemp -u -t gitsplit)
 
     if [ $? -ne 0 ]; then
@@ -122,18 +124,23 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         exit 1
     fi
 
+    # switch to tmp repository, remove remotes, tags and do the filtering work
     cd $tmp
 
     git remote | xargs git remote rm
     git tag -l | xargs git tag -d
     git filter-branch -f --index-filter "git rm --ignore-unmatch --cached -qr -- . && git reset -q \$GIT_COMMIT -- $keep" --prune-empty -- $branch
 
+    # switch to source to clone tmp repository to correct destination path to get a clean history
     cd $src
 
     git clone $tmp $dst || { echo "unable to clone tmp repository into destination path"; exit 1; }
+
+    # switch to destination directory and remove reference to origin
     cd $dst
 
     git remote | xargs git remote rm
 
+    # remove tmp repository
     rm -rf $tmp
 fi
