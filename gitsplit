@@ -1,22 +1,25 @@
 #!/usr/bin/env bash
 
-if [[ "$4" = "" ]]; then
-    echo "usage: gitsplit src branch dst keep [keep ...]"
+if [[ "$3" = "" ]]; then
+    echo "usage: gitsplit branch dst keep [keep ...]"
+    echo
+    echo "DESCRIPTION"
+    echo "    This tool is used to split parts of a repository into a new"
+    echo "    repository. The tool must be executed inside the source re-"
+    echo "    pository. The specified destination path cannot be a sub-"
+    echo "    directory of the source repository."
     echo
     echo "ARGUMENTS"
-    echo "    src       The source repository to split from."
-    echo
     echo "    branch    The source branch to split from."
     echo
-    echo "    dst       The destination path for the repository"
-    echo "              to create. This path must not exist."
+    echo "    dst       The destination path for the repository to create"
+    echo "              This path must not exist."
     echo
-    echo "    keep      At least one path to keep in the new"
-    echo "              repository."
+    echo "    keep      At least one path to keep in the new repository."
     exit 1
 fi
 
-src=$1; shift
+src=$(pwd)
 branch=$1; shift
 dst=$1; shift
 
@@ -28,15 +31,19 @@ elif [ -e $dst ]; then
     exit 1
 fi
 
-( cd $src && git rev-parse --abbrev-ref HEAD; ) 2>&1 >/dev/null
+case $(cd $(dirname $dst) && { pwd -P 2>/dev/null || env PWD= pwd; })/ in
+   "$( pwd -P 2>/dev/null || env PWD= pwd )"/*)
+       echo "destination path can not be a subfolder of source path"
+       exit 1
+       ;;
+esac
+
+git rev-parse --abbrev-ref HEAD 2>&1 >/dev/null
 
 if [ $? -ne 0 ]; then
     echo "source path is not a git repository $src"
     exit 1
 fi
-
-cwd=$(pwd)
-cd $src
 
 # manage keep list, prevents duplicate entries
 keep=()
@@ -85,22 +92,30 @@ keep="${keep[@]}"
 
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     # do the dirty work
-    tmp=$dst.$$
-    
-    { cd $cwd && git clone --single-branch --branch $branch $src $tmp; } || { echo "unable to clone source repository"; exit 1; }
+    tmp=$(mktemp -u 2>/dev/null || mktemp -u -t gitsplit)
 
-    if [ ! -d $tmp ]; then
+    if [ $? -ne 0 ]; then
+        echo "unable to create temporary directory"
+        exit 1
+    fi
+
+    git clone --single-branch --branch $branch $src $tmp || { echo "unable to clone source repository"; exit 1; }
+
+    if [ ! -d "$tmp" ]; then
         echo "destination path does not exist"
         exit 1
     fi
-    
+
     cd $tmp
-    
-    git rebase --interactive init | xargs git remote rm
+
+    git remote | xargs git remote rm
     git tag -l | xargs git tag -d
     git filter-branch -f --index-filter "git rm --ignore-unmatch --cached -qr -- . && git reset -q \$GIT_COMMIT -- $keep" --prune-empty -- $branch
-    
-    cd $cwd && git clone $tmp $dst
-    
+
+    cd $src
+
+    git clone $tmp $dst || { echo "unable to clone tmp repository into destination path"; exit 1; }
+    git remote | xargs git remote rm
+
     rm -rf $tmp
 fi
