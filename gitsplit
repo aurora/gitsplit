@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+
+if [[ "$4" = "" ]]; then
+    echo "usage: gitsplit src branch dst keep [keep ...]"
+    echo
+    echo "ARGUMENTS"
+    echo "    src       The source repository to split from."
+    echo
+    echo "    branch    The source branch to split from."
+    echo
+    echo "    dst       The destination path for the repository"
+    echo "              to create. This path must not exist."
+    echo
+    echo "    keep      At least one path to keep in the new"
+    echo "              repository."
+    exit 1
+fi
+
+src=$1; shift
+branch=$1; shift
+dst=$1; shift
+
+if [ ! -d $src ]; then
+    echo "source path is not a directory $src"
+    exit 1
+elif [ -e $dst ]; then
+    echo "destination path already exists $dst"
+    exit 1
+fi
+
+( cd $src && git rev-parse --abbrev-ref HEAD; ) 2>&1 >/dev/null
+
+if [ $? -ne 0 ]; then
+    echo "source path is not a git repository $src"
+    exit 1
+fi
+
+cwd=$(pwd)
+cd $src
+
+# manage keep list, prevents duplicate entries
+keep=()
+
+function keep_item {
+    case "${keep[@]}" in *"$1"*) ;; *) keep+=($1) ;; esac
+}
+
+# collect filenames from path specified as command line arguments
+for i in "$@"; do
+    name=$(echo $i | perl -pe 's/^(\.(?=[\.\/])|\/)*(.*?)[.\/]*$/.\/$2/')
+
+    if [ -f $name ]; then
+        keep_item $name
+    elif [ -d $name ]; then
+        while read -r tmp; do
+            keep_item $tmp
+        done < <(find $name -type f)
+    fi
+done
+
+# add renamed files
+for ((i=0; i<${#keep[@]}; i++)); do
+    while read -r -a tmp; do
+        if [[ "./${tmp[2]}" = "${keep[$i]}" ]]; then
+            # only exact match
+            keep_item ./${tmp[1]}
+        fi
+    done < <(git log --follow --name-status --oneline -- "${keep[$i]}" | grep "^R")
+done
+
+if [ ${#keep[@]} -eq 0 ]; then
+    echo "nothing to do"
+    exit 1
+fi
+
+for ((i=0; i<${#keep[@]}; i++)); do
+    echo ${keep[$i]}
+done
+
+echo
+read -p "split listed items from '$branch'? (y/n) " -n 1 -r
+echo
+
+keep="${keep[@]}"
+
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    # do the dirty work
+    tmp=$dst.$$
+    
+    { cd $cwd && git clone --single-branch --branch $branch $src $tmp; } || { echo "unable to clone source repository"; exit 1; }
+
+    if [ ! -d $tmp ]; then
+        echo "destination path does not exist"
+        exit 1
+    fi
+    
+    cd $tmp
+    
+    git rebase --interactive init | xargs git remote rm
+    git tag -l | xargs git tag -d
+    git filter-branch -f --index-filter "git rm --ignore-unmatch --cached -qr -- . && git reset -q \$GIT_COMMIT -- $keep" --prune-empty -- $branch
+    
+    cd $cwd && git clone $tmp $dst
+    
+    rm -rf $tmp
+fi
