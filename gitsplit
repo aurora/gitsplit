@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # gitsplit
-# Copyright (C) 2018 by Harald Lapp <harald@octris.org>
+# Copyright (C) 2018-present by Harald Lapp <harald@octris.org>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,8 +16,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-if [[ "$3" = "" ]]; then
-    echo "usage: gitsplit branch dst keep [keep ...]"
+if [[ "$2" = "" ]]; then
+    echo "usage: gitsplit branch dst [keep [keep ...]]"
     echo
     echo "DESCRIPTION"
     echo "    This tool is used to split parts of a repository into a new"
@@ -31,7 +31,9 @@ if [[ "$3" = "" ]]; then
     echo "    dst       The destination path for the repository to create"
     echo "              This path must not exist."
     echo
-    echo "    keep      At least one path to keep in the new repository."
+    echo "    keep      One path or multiple paths to keep in the new repository,"
+    echo "              if no paths are specified the entire source branch is"
+    echo "              splitted into a new repository."
     exit 1
 fi
 
@@ -68,43 +70,47 @@ function keep_item {
     case "${keep[@]}" in *"$1"*) ;; *) keep+=($1) ;; esac
 }
 
-# collect filenames from path specified as command line arguments
-for i in "$@"; do
-    name=$(echo $i | perl -pe 's/^(\.(?=[\.\/])|\/)*(.*?)[.\/]*$/.\/$2/')
+if [[ "$1" != "" ]]; then
+    # collect filenames from path specified as command line arguments
+    for i in "$@"; do
+        name=$(echo $i | perl -pe 's/^(\.(?=[\.\/])|\/)*(.*?)[.\/]*$/.\/$2/')
 
-    if [ -f $name ]; then
-        keep_item $name
-    elif [ -d $name ]; then
-        while read -r tmp; do
-            keep_item $tmp
-        done < <(find $name -type f)
-    fi
-done
-
-# add renamed files
-for ((i=0; i<${#keep[@]}; i++)); do
-    while read -r -a tmp; do
-        if [[ "./${tmp[2]}" = "${keep[$i]}" ]]; then
-            # only exact match
-            keep_item ./${tmp[1]}
+        if [ -f $name ]; then
+            keep_item $name
+        elif [ -d $name ]; then
+            while read -r tmp; do
+                keep_item $tmp
+            done < <(find $name -type f)
         fi
-    done < <(git log --follow --name-status --oneline -- "${keep[$i]}" | grep "^R")
-done
+    done
 
-if [ ${#keep[@]} -eq 0 ]; then
-    echo "nothing to do"
-    exit 1
+    # add renamed files
+    for ((i=0; i<${#keep[@]}; i++)); do
+        while read -r -a tmp; do
+            if [[ "./${tmp[2]}" = "${keep[$i]}" ]]; then
+                # only exact match
+                keep_item ./${tmp[1]}
+            fi
+        done < <(git log --follow --name-status --oneline -- "${keep[$i]}" | grep "^R")
+    done
+
+    if [ ${#keep[@]} -eq 0 ]; then
+        echo "nothing to do"
+        exit 1
+    fi
+
+    for ((i=0; i<${#keep[@]}; i++)); do
+        echo ${keep[$i]}
+    done
+
+    echo
+    read -p "split listed items from '$branch'? (y/n) " -n 1 -r
+    echo
+else
+    echo
+    read -p "split entire branch '$branch'? (y/n) " -n 1 -r
+    echo
 fi
-
-for ((i=0; i<${#keep[@]}; i++)); do
-    echo ${keep[$i]}
-done
-
-echo
-read -p "split listed items from '$branch'? (y/n) " -n 1 -r
-echo
-
-keep="${keep[@]}"
 
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     # do the dirty work
@@ -124,12 +130,18 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         exit 1
     fi
 
-    # switch to tmp repository, remove remotes, tags and do the filtering work
+    # switch to tmp repository, remove remotes and tags
     cd $tmp
 
     git remote | xargs git remote rm
     git tag -l | xargs git tag -d
-    git filter-branch -f --index-filter "git rm --ignore-unmatch --cached -qr -- . && git reset -q \$GIT_COMMIT -- $keep" --prune-empty -- $branch
+    
+    # do the filtering work
+    if [ ${#keep[@]} -ne 0 ]; then
+        keep="${keep[@]}"
+    
+        git filter-branch -f --index-filter "git rm --ignore-unmatch --cached -qr -- . && git reset -q \$GIT_COMMIT -- $keep" --prune-empty -- $branch
+    fi
 
     # switch to source to clone tmp repository to correct destination path to get a clean history
     cd $src
