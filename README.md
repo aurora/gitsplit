@@ -14,7 +14,7 @@ garanteed to work for others as well.
 ## Usage
 
 ```
-usage: gitsplit branch dst keep [keep ...]
+usage: gitsplit branch dst [keep [keep ...]]
 
 DESCRIPTION
     This tool is used to split parts of a repository into a new
@@ -28,7 +28,9 @@ ARGUMENTS
     dst       The destination path for the repository to create
               This path must not exist.
 
-    keep      At least one path to keep in the new repository.
+    keep      One path or multiple paths to keep in the new repository,
+              if no paths are specified the entire source branch is
+              splitted into a new repository.
 ```
 
 ## Disclaimer
@@ -42,7 +44,7 @@ tool.
 
 gitsplit
 
-Copyright (C) 2018 by Harald Lapp <harald@octris.org>
+Copyright (C) 2018-present by Harald Lapp <harald@octris.org>
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
